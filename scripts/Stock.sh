@@ -1,0 +1,14 @@
+python -m bp-informer.main_informer.py \
+--model informer \
+--data Stock \
+--root_path "./bp-informer/data/stock" \
+--data_path "res.csv" \
+--features MS \
+--target price \
+--freq "t" \
+--seq_len 24 \
+--label_len 12 \
+--pred_len 12 \
+--embed timeF \
+--do_predict \
+--batch_size 24
