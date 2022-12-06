@@ -6,9 +6,8 @@ python -m bp-informer.main_informer.py \
 --features MS \
 --target price \
 --freq "t" \
---seq_len 24 \
---label_len 12 \
+--seq_len 60 \
+--label_len 36 \
 --pred_len 12 \
 --embed timeF \
---do_predict \
---batch_size 24
+--batch_size 12

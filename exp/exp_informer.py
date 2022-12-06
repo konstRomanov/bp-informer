@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch import optim
 from torch.utils.data import DataLoader
 
-from ..data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, DatasetStock
+from ..data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, DatasetAuto
 from ..exp.exp_basic import Exp_Basic
 from ..models.model import Informer, InformerStack
 from ..utils.metrics import metric
@@ -68,7 +68,7 @@ class Exp_Informer(Exp_Basic):
             'ECL': Dataset_Custom,
             'Solar': Dataset_Custom,
             'custom': Dataset_Custom,
-            'Stock': DatasetStock,
+            'Stock': DatasetAuto,
         }
         Data = data_dict[self.args.data]
         timeenc = 0 if args.embed != 'timeF' else 1
@@ -100,7 +100,6 @@ class Exp_Informer(Exp_Basic):
             inverse=args.inverse,
             timeenc=timeenc,
             freq=freq,
-            cols=args.cols
         )
         print(flag, len(data_set))
         data_loader = DataLoader(
@@ -152,10 +151,6 @@ class Exp_Informer(Exp_Basic):
 
         if self.args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
-
-        # print(f"TEST - Train steps: {train_steps}")
-        # print(f"TEST - Train step 1: {np.array(list(train_loader)).shape}")
-        # exit()
 
         for epoch in range(self.args.train_epochs):
             iter_count = 0
@@ -227,13 +222,18 @@ class Exp_Informer(Exp_Basic):
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
         print('test shape:', preds.shape, trues.shape)
 
+        # print(np.round(trues, 2))
+        # print(np.round(preds, 2))
+        # exit()
+
         # result save
-        folder_path = './results/' + setting + '/'
+        folder_path = './bp-informer/results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
         mae, mse, rmse, mape, mspe = metric(preds, trues)
         print('mse:{}, mae:{}'.format(mse, mae))
+        print(f'folder_path: {folder_path}')
 
         np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
         np.save(folder_path + 'pred.npy', preds)
@@ -261,11 +261,9 @@ class Exp_Informer(Exp_Basic):
 
         preds = np.array(preds)
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
-        preds = pred_data.inverse_transform(preds)
 
         trues = np.array(trues)
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
-        trues = pred_data.inverse_transform(trues)
 
         mae, mse, rmse, mape, mspe = metric(preds, trues)
         print('mse:{}, mae:{}'.format(mse, mae))
@@ -273,7 +271,7 @@ class Exp_Informer(Exp_Basic):
         print(f"TEST - Prediction - Saving result")
 
         # result save
-        folder_path = './results/' + setting + '/'
+        folder_path = './bp-informer/results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
@@ -314,5 +312,4 @@ class Exp_Informer(Exp_Basic):
             outputs = dataset_object.inverse_transform(outputs)
         f_dim = -1 if self.args.features == 'MS' else 0
         batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-
         return outputs, batch_y

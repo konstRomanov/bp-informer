@@ -11,6 +11,101 @@ from ..utils.tools import StandardScaler
 warnings.filterwarnings('ignore')
 
 
+class DatasetAuto(Dataset):
+    def __init__(self, root_path, flag='train', size=None,
+                 features='S', data_path='res.csv',
+                 target='price', scale=True, inverse=False, timeenc=0, freq='h', train=0.8, val=0.2):
+
+        self.train = train
+        self.val = val
+
+        # size [seq_len, label_len, pred_len]
+        self.seq_len = size[0]
+        self.label_len = size[1]
+        self.pred_len = size[2]
+
+        # init
+        assert flag in ['train', 'test', 'val', 'pred']
+        phase_map = {'train': 0, 'val': 1, 'test': 2, 'pred': 3}
+        self.model_phase = phase_map[flag]
+
+        self.features = features
+        self.target = target
+        self.scale = scale
+        self.inverse = inverse
+        self.timeenc = timeenc
+        self.freq = freq
+
+        self.scaler = StandardScaler()
+
+        self.root_path = root_path
+        self.data_path = data_path
+        self.__read_data__()
+
+    def __read_data__(self):
+        df = pd.read_csv(self.root_path + "/" + self.data_path)
+        new_cols = ['date'] + list(set(df.columns.tolist()) - {self.target, 'date'}) + [self.target]
+        df = df[new_cols]
+
+        train_l = 0
+        train_r = val_l = int(len(df) * self.train) - int(len(df) * self.train * self.val)
+        val_r = test_l = int(len(df) * self.train)
+        test_r = len(df)
+
+        assert train_r >= self.seq_len and (val_r - val_l) >= self.seq_len and (test_r - test_l) >= self.seq_len
+
+        # refactor to be dynamic
+        borders_l = [train_l, val_l, test_l]
+        borders_r = [train_r, val_r, test_r]
+        border_l = borders_l[self.model_phase]
+        border_r = borders_r[self.model_phase]
+
+        if self.features == 'M' or self.features == 'MS':
+            cols_data = df.columns[1:]
+            df_data = df[cols_data]
+        else:  # self.features == 'S'
+            df_data = df[[self.target]]
+
+        if self.scale:
+            train_data = df_data[borders_l[0]:borders_r[0]]
+            self.scaler.fit(train_data.values)
+            data = self.scaler.transform(df_data.values)
+        else:
+            data = df_data.values
+
+        df_stamp = df[['date']][border_l:border_r]
+        df_stamp['date'] = pd.to_datetime(df_stamp.date)
+        data_stamp = time_features(df_stamp, timeenc=self.timeenc, freq=self.freq)
+
+        self.data_x = data[border_l:border_r]
+        if self.inverse:
+            self.data_y = df_data.values[border_l:border_r]
+        else:
+            self.data_y = data[border_l:border_r]
+        self.data_stamp = data_stamp
+
+    def __getitem__(self, index):
+        seq_l = index
+        seq_r = seq_l + self.seq_len
+        pred_l = seq_r - self.label_len
+        pred_r = seq_r + self.pred_len
+
+        seq_x = self.data_x[seq_l:seq_r]
+        if self.inverse:
+            seq_y = np.concatenate([self.data_x[pred_l:seq_r], self.data_y[seq_r:pred_r]], 0)
+        else:
+            seq_y = self.data_y[pred_l:pred_r]
+        seq_x_stamp = self.data_stamp[seq_l:seq_r]
+        seq_y_stamp = self.data_stamp[pred_l:pred_r]
+        return seq_x, seq_y, seq_x_stamp, seq_y_stamp
+
+    def __len__(self):
+        return len(self.data_x) - self.seq_len - self.pred_len + 1
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
+
+
 class DatasetStock(Dataset):
 
     def __init__(self, root_path, flag='train', size=None,
@@ -425,8 +520,8 @@ class Dataset_Pred(Dataset):
             cols = self.cols.copy()
             cols.remove(self.target)
         else:
-            cols = list(df_raw.columns);
-            cols.remove(self.target);
+            cols = list(df_raw.columns)
+            cols.remove(self.target)
             cols.remove('date')
         df_raw = df_raw[['date'] + cols + [self.target]]
 
