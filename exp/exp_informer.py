@@ -3,13 +3,14 @@ import time
 import warnings
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch import optim
 from torch.utils.data import DataLoader
 
-from ..data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, DatasetAuto
-from ..exp.exp_basic import Exp_Basic
+from ..data.data_loader import DatasetAuto
+from ..exp.exp_basic import ExpBasic
 from ..models.model import Informer, InformerStack
 from ..utils.metrics import metric
 from ..utils.tools import EarlyStopping, adjust_learning_rate
@@ -17,9 +18,9 @@ from ..utils.tools import EarlyStopping, adjust_learning_rate
 warnings.filterwarnings('ignore')
 
 
-class Exp_Informer(Exp_Basic):
+class ExpInformer(ExpBasic):
     def __init__(self, args):
-        super(Exp_Informer, self).__init__(args)
+        super(ExpInformer, self).__init__(args)
 
     def _build_model(self):
         model_dict = {
@@ -60,18 +61,9 @@ class Exp_Informer(Exp_Basic):
         args = self.args
 
         data_dict = {
-            'ETTh1': Dataset_ETT_hour,
-            'ETTh2': Dataset_ETT_hour,
-            'ETTm1': Dataset_ETT_minute,
-            'ETTm2': Dataset_ETT_minute,
-            'WTH': Dataset_Custom,
-            'ECL': Dataset_Custom,
-            'Solar': Dataset_Custom,
-            'custom': Dataset_Custom,
-            'Stock': DatasetAuto,
+            'Stock': DatasetAuto
         }
         Data = data_dict[self.args.data]
-        timeenc = 0 if args.embed != 'timeF' else 1
 
         if flag == 'test':
             shuffle_flag = False
@@ -98,7 +90,7 @@ class Exp_Informer(Exp_Basic):
             features=args.features,
             target=args.target,
             inverse=args.inverse,
-            timeenc=timeenc,
+            embed=args.embed,
             freq=freq,
         )
         print(flag, len(data_set))
@@ -122,11 +114,9 @@ class Exp_Informer(Exp_Basic):
     def vali(self, vali_data, vali_loader, criterion):
         self.model.eval()
         total_loss = []
-        # print(f"TEST - Validation data: {len(vali_data)}")
         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
             pred, true = self._process_one_batch(vali_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
             loss = criterion(pred.detach().cpu(), true.detach().cpu())
-            # print(f"TEST - Loss: {loss}")
             total_loss.append(loss)
         total_loss = np.average(total_loss)
         self.model.train()
@@ -218,13 +208,9 @@ class Exp_Informer(Exp_Basic):
         preds = np.array(preds)
         trues = np.array(trues)
         print('test shape:', preds.shape, trues.shape)
-        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
-        trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+        preds = preds.reshape([-1, preds.shape[-2], preds.shape[-1]])
+        trues = trues.reshape([-1, trues.shape[-2], trues.shape[-1]])
         print('test shape:', preds.shape, trues.shape)
-
-        # print(np.round(trues, 2))
-        # print(np.round(preds, 2))
-        # exit()
 
         # result save
         folder_path = './bp-informer/results/' + setting + '/'
@@ -232,7 +218,7 @@ class Exp_Informer(Exp_Basic):
             os.makedirs(folder_path)
 
         mae, mse, rmse, mape, mspe = metric(preds, trues)
-        print('mse:{}, mae:{}'.format(mse, mae))
+        print(f'mse:{mse}, mae:{mae}')
         print(f'folder_path: {folder_path}')
 
         np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
@@ -250,37 +236,26 @@ class Exp_Informer(Exp_Basic):
         self.model.eval()
 
         preds = []
-        trues = []
-
-        print(f"TEST - Prediction")
 
         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(pred_loader):
-            pred, true = self._process_one_batch(pred_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
+            pred, _ = self._process_one_batch(pred_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
             preds.append(pred.detach().cpu().numpy())
-            trues.append(true.detach().cpu().numpy())
 
         preds = np.array(preds)
-        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
+        preds = preds.reshape([-1, preds.shape[-2], preds.shape[-1]])
 
-        trues = np.array(trues)
-        trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
-
-        mae, mse, rmse, mape, mspe = metric(preds, trues)
-        print('mse:{}, mae:{}'.format(mse, mae))
-
-        print(f"TEST - Prediction - Saving result")
+        res = pd.DataFrame()
+        res['date'] = pred_data.pred_stamp.values
+        res['price'] = preds[0, :, :].flatten()
+        print(res)
 
         # result save
         folder_path = './bp-informer/results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        np.save(folder_path + 'expected_prediction.npy', preds)
-        np.save(folder_path + 'prediction.npy', trues)
-        print(folder_path + 'expected_prediction.npy')
+        np.save(folder_path + 'prediction.npy', preds)
         print(folder_path + 'prediction.npy')
-        print(f"TEST - Prediction - Done")
-
 
     def _process_one_batch(self, dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark):
         batch_x = batch_x.float().to(self.device)
@@ -290,11 +265,10 @@ class Exp_Informer(Exp_Basic):
         batch_y_mark = batch_y_mark.float().to(self.device)
 
         # decoder input
-        if self.args.padding == 0:
-            dec_inp = torch.zeros([batch_y.shape[0], self.args.pred_len, batch_y.shape[-1]]).float()
-        elif self.args.padding == 1:
-            dec_inp = torch.ones([batch_y.shape[0], self.args.pred_len, batch_y.shape[-1]]).float()
+        mask = torch.zeros if self.args.padding == 0 else torch.ones
+        dec_inp = mask([batch_y.shape[0], self.args.pred_len, batch_y.shape[-1]]).float()
         dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+
         # encoder - decoder
         if self.args.use_amp:
             with torch.cuda.amp.autocast():

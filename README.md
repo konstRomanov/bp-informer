@@ -98,7 +98,7 @@ python -u main_informer.py --model <model> --data <data>
 --n_heads <n_heads> --e_layers <e_layers> --d_layers <d_layers>
 --s_layers <s_layers> --d_ff <d_ff> --factor <factor> --padding <padding>
 --distil --dropout <dropout> --attn <attn> --embed <embed> --activation <activation>
---output_attention --do_predict --mix --cols <cols> --itr <itr>
+--output_attention --predict --mix --cols <cols> --itr <itr>
 --num_workers <num_workers> --train_epochs <train_epochs>
 --batch_size <batch_size> --patience <patience> --des <des>
 --learning_rate <learning_rate> --loss <loss> --lradj <lradj>
@@ -137,7 +137,7 @@ The detailed descriptions about the arguments are as following:
 | embed | Time features encoding (defaults to `timeF`). This can be set to `timeF`, `fixed`, `learned` |
 | activation | Activation function (defaults to `gelu`) |
 | output_attention | Whether to output attention in encoder, using this argument means outputing attention (defaults to `False`) |
-| do_predict | Whether to predict unseen future data, using this argument means making predictions (defaults to `False`) |
+| predict | Whether to predict unseen future data, using this argument means making predictions (defaults to `False`) |
 | mix | Whether to use mix attention in generative decoder, using this argument means not using mix attention (defaults to `True`) |
 | cols | Certain cols from the data files as the input features |
 | num_workers | The num_works of Data loader (defaults to 0) |

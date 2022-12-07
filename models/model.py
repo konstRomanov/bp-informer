@@ -8,13 +8,13 @@ from ..models.encoder import Encoder, EncoderLayer, ConvLayer, EncoderStack
 
 
 class Informer(nn.Module):
-    def __init__(self, enc_in, dec_in, c_out, seq_len, label_len, out_len,
+    def __init__(self, enc_in, dec_in, c_out, seq_len, label_len, pred_len,
                  factor=5, d_model=512, n_heads=8, e_layers=3, d_layers=2, d_ff=512,
                  dropout=0.0, attn='prob', embed='fixed', freq='h', activation='gelu',
                  output_attention=False, distil=True, mix=True,
                  device=torch.device('cuda:0')):
         super(Informer, self).__init__()
-        self.pred_len = out_len
+        self.pred_len = pred_len
         self.attn = attn
         self.output_attention = output_attention
 
@@ -81,13 +81,13 @@ class Informer(nn.Module):
 
 
 class InformerStack(nn.Module):
-    def __init__(self, enc_in, dec_in, c_out, seq_len, label_len, out_len,
+    def __init__(self, enc_in, dec_in, c_out, seq_len, label_len, pred_len,
                  factor=5, d_model=512, n_heads=8, e_layers=[3, 2, 1], d_layers=2, d_ff=512,
                  dropout=0.0, attn='prob', embed='fixed', freq='h', activation='gelu',
                  output_attention=False, distil=True, mix=True,
                  device=torch.device('cuda:0')):
         super(InformerStack, self).__init__()
-        self.pred_len = out_len
+        self.pred_len = pred_len
         self.attn = attn
         self.output_attention = output_attention
 
