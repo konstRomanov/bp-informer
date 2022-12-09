@@ -143,13 +143,13 @@ def time_features(dates, embed='t2v', freq='h'):
         dates['weekday'] = dates.date.apply(lambda row: row.weekday(), 1)
         dates['hour'] = dates.date.apply(lambda row: row.hour, 1)
         dates['minute'] = dates.date.apply(lambda row: row.minute, 1)
-        dates['minute'] = dates.minute.map(lambda x: x // freq[:-1] if freq[:-1].isnumeric() else 15)
+        dates['minute'] = dates.minute.map(lambda x: x // int(freq[:-1]) if freq[:-1].isnumeric() else 15)
         freq_map = {
             'y': [], 'm': ['month'], 'w': ['month'], 'd': ['month', 'day', 'weekday'],
             'b': ['month', 'day', 'weekday'], 'h': ['month', 'day', 'weekday', 'hour'],
             't': ['month', 'day', 'weekday', 'hour', 'minute'],
         }
-        return dates[freq_map[freq.lower()]].values
+        return dates[freq_map[freq[-1].lower()]].values
     else:
         dates = pd.to_datetime(dates.date.values)
         return np.vstack([feat(dates) for feat in time_features_from_frequency_str(freq)]).transpose([1, 0])

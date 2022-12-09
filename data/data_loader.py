@@ -1,13 +1,12 @@
 import warnings
-from datetime import timedelta
 
 import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal
 from torch.utils.data import Dataset
 
-from ..utils.time_features import time_features
-from ..utils.tools import StandardScaler
+from utils.time_features import time_features
+from utils.tools import StandardScaler
 
 warnings.filterwarnings('ignore')
 
@@ -18,17 +17,16 @@ PRED_PHASE = 3
 
 PRICES_PER_DAY = 27
 
+
 class DatasetAuto(Dataset):
-    def __init__(self, root_path, flag='train', size=None,
+    def __init__(self, root_path, flag='train', seq_len=None, pred_len=None,
                  features='S', data_path='Stock.csv',
                  target='price', scale=True, inverse=False, embed='t2v', freq='h', test=0.2):
 
         self.test = test
 
-        # size [seq_len, label_len, pred_len]
-        self.seq_len = size[0]
-        self.label_len = size[1]
-        self.pred_len = size[2]
+        self.seq_len = seq_len
+        self.pred_len = pred_len
 
         # init
         assert flag in ['train', 'test', 'val', 'pred']
@@ -59,7 +57,9 @@ class DatasetAuto(Dataset):
         pred_l = len(df) - self.seq_len
         test_r = pred_r = len(df)
 
-        assert train_r >= self.seq_len and (val_r - val_l) >= self.seq_len and (test_r - test_l) >= self.seq_len
+        assert train_r >= self.seq_len + self.pred_len
+        assert (val_r - val_l) >= self.seq_len + self.pred_len
+        assert (test_r - test_l) >= self.seq_len + self.pred_len
 
         borders_l = [train_l, val_l, test_l, pred_l]
         borders_r = [train_r, val_r, test_r, pred_r]
@@ -67,8 +67,7 @@ class DatasetAuto(Dataset):
         border_r = borders_r[self.model_phase]
 
         if self.features == 'M' or self.features == 'MS':
-            cols_data = df.columns[1:]
-            df_ftr = df[cols_data]
+            df_ftr = df[df.columns[1:]]
         else:  # self.features == 'S'
             df_ftr = df[[self.target]]
 
@@ -89,34 +88,29 @@ class DatasetAuto(Dataset):
             df_stamp.date = list(tmp.date.values) + list(self.pred_stamp)
         data_stamp = time_features(df_stamp, embed=self.embed, freq=self.freq)
 
-        self.data_x = df_ftr_sc[border_l:border_r]
-        if self.inverse:
-            self.data_y = df_ftr.values[border_l:border_r]
-        else:
-            self.data_y = df_ftr_sc[border_l:border_r]
+        self.data = df_ftr_sc[border_l:border_r]
+        self.data_inv = df_ftr.values[border_l:border_r]
+
         self.data_stamp = data_stamp
 
     def __getitem__(self, index):
         seq_l = index
-        seq_r = seq_l + self.seq_len
-        pred_l = seq_r - self.label_len
-        pred_r = seq_r + self.pred_len
+        seq_r = pred_l = seq_l + self.seq_len
+        pred_r = pred_l + self.pred_len
 
-        seq_x = self.data_x[seq_l:seq_r]
         if self.inverse:
-            seq_y = np.concatenate([self.data_x[pred_l:seq_r], self.data_y[seq_r:pred_r]], 0) \
+            seq = np.concatenate([self.data[seq_l:seq_r], self.data_inv[pred_l:pred_r]], 0) \
                 if self.model_phase != PRED_PHASE \
-                else self.data_x[pred_l:seq_r]
+                else self.data[seq_l:pred_r]
         else:
-            seq_y = self.data_y[pred_l:pred_r] if self.model_phase != PRED_PHASE else self.data_y[pred_l:seq_r]
-        seq_x_stamp = self.data_stamp[seq_l:seq_r]
-        seq_y_stamp = self.data_stamp[pred_l:pred_r]
-        return seq_x, seq_y, seq_x_stamp, seq_y_stamp
+            seq = self.data[seq_l:pred_r]
+        seq_stamp = self.data_stamp[seq_l:pred_r]
+        return seq, seq_stamp
 
     def __len__(self):
-        return len(self.data_x) - self.seq_len - self.pred_len + 1 \
+        return len(self.data) - self.seq_len - self.pred_len + 1 \
             if self.model_phase != PRED_PHASE \
-            else len(self.data_x) - self.seq_len + 1
+            else len(self.data) - self.seq_len + 1
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)

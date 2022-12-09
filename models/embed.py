@@ -3,52 +3,30 @@ import math
 import torch
 import torch.nn as nn
 
-from ..utils.periodic_activations import SinActivation, CosActivation
+from utils.periodic_activations import CosActivation
 
 
 class PositionalEmbedding(nn.Module):
-    def __init__(self, d_model, max_len=5000, learned=False):
+    def __init__(self, d_model, max_len=5000):
         super(PositionalEmbedding, self).__init__()
-        self.learned = learned
-
-        if learned:
-            self.d_model = d_model
-            self.pe = nn.Embedding(max_len, d_model)
-        else:
-            # Compute the positional encodings once in log space.
-            pe = torch.zeros(max_len, d_model).float()
-            pe.require_grad = False
-
-            position = torch.arange(0, max_len).float().unsqueeze(1)
-            div_term = (torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)).exp()
-
-            pe[:, 0::2] = torch.sin(position * div_term)
-            pe[:, 1::2] = torch.cos(position * div_term)
-
-            pe = pe.unsqueeze(0)
-            self.register_buffer('pe', pe)
+        self.d_model = d_model
+        self.pe = nn.Embedding(max_len, d_model)
 
     def forward(self, x):
-        return self.pe(torch.arange(x.size(1)).to('cuda'))[None, :, :].expand(x.size(0), x.size(1), self.d_model) \
-            if self.learned \
-            else self.pe[:, :x.size(1)]
+        return self.pe(torch.arange(x.size(1)).to('cuda'))[None, :, :].expand(x.size(0), x.size(1), self.d_model)
 
 
 class TokenEmbedding(nn.Module):
-    def __init__(self, c_in, d_model, learned=False):
+    def __init__(self, d_in, d_model):
         super(TokenEmbedding, self).__init__()
         padding = 1 if torch.__version__ >= '1.5.0' else 2
-        self.tokenConv = nn.Conv1d(in_channels=c_in, out_channels=d_model,
+        self.tokenConv = nn.Conv1d(in_channels=d_in, out_channels=d_model,
                                    kernel_size=3, padding=padding, padding_mode='circular')
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
 
     def forward(self, x):
-        # TODO check with changed input dimension
-        # print(x)
-        # print(x.permute(0, 2, 1))
-        # exit()
         return self.tokenConv(x.permute(0, 2, 1)).transpose(1, 2)
 
 
@@ -73,7 +51,7 @@ class FixedEmbedding(nn.Module):
 
 
 class TemporalEmbedding(nn.Module):
-    def __init__(self, d_model, embed_type='fixed', freq='h'):
+    def __init__(self, d_model, freq='h'):
         super(TemporalEmbedding, self).__init__()
 
         minute_size = 4
@@ -82,7 +60,7 @@ class TemporalEmbedding(nn.Module):
         day_size = 32
         month_size = 13
 
-        Embed = FixedEmbedding if embed_type == 'fixed' else nn.Embedding
+        Embed = FixedEmbedding
         if freq == 't':
             self.minute_embed = Embed(minute_size, d_model)
         self.hour_embed = Embed(hour_size, d_model)
@@ -102,27 +80,10 @@ class TemporalEmbedding(nn.Module):
         return hour_x + weekday_x + day_x + month_x + minute_x
 
 
-class TimeFeatureEmbedding(nn.Module):
-    def __init__(self, d_model, embed_type='timeF', freq='h'):
-        super(TimeFeatureEmbedding, self).__init__()
-        d_inp = TimeFeatureEmbedding.freq_map[freq]
-        self.embed = nn.Linear(d_inp, d_model)
-
-    def forward(self, x):
-        return self.embed(x)
-
-
-TimeFeatureEmbedding.freq_map = {'h': 4, 't': 5, 's': 6, 'm': 1, 'a': 1, 'w': 2, 'd': 3, 'b': 3}
-
-
 class Time2Vec(nn.Module):
-    def __init__(self, features, d_model, d_embed=42, activation="sin"):
+    def __init__(self, features, d_model, d_embed=42):
         super(Time2Vec, self).__init__()
-        if activation == "sin":
-            self.l1 = SinActivation(features, d_embed)
-        elif activation == "cos":
-            self.l1 = CosActivation(features, d_embed)
-
+        self.l1 = CosActivation(features, d_embed)
         self.fc1 = nn.Linear(d_embed, d_model)
 
     def forward(self, x):
@@ -130,17 +91,15 @@ class Time2Vec(nn.Module):
 
 
 class DataEmbedding(nn.Module):
-    def __init__(self, c_in, d_model, embed_type='fixed', freq='h', dropout=0.1):
+    def __init__(self, d_in, d_model, embed_type='fixed', freq='h', dropout=0.1):
         super(DataEmbedding, self).__init__()
 
-        self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
+        self.value_embedding = TokenEmbedding(d_in=d_in, d_model=d_model)
         self.position_embedding = PositionalEmbedding(d_model=d_model)
-        if embed_type == 'timeF':
-            self.temporal_embedding = TimeFeatureEmbedding(d_model=d_model, embed_type=embed_type, freq=freq)
-        elif embed_type == 't2v':
+        if embed_type == 't2v':
             self.temporal_embedding = Time2Vec(5, d_model)
         else:
-            self.temporal_embedding = TemporalEmbedding(d_model=d_model, embed_type=embed_type, freq=freq)
+            self.temporal_embedding = TemporalEmbedding(d_model=d_model, freq=freq)
 
         self.dropout = nn.Dropout(p=dropout)
 

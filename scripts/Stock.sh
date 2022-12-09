@@ -2,13 +2,15 @@ python -m bp-informer.main_informer \
 --model informer \
 --data Stock \
 --root_path "./bp-informer/data/stock" \
---data_path "res.csv" \
+--data_path "Stock.csv" \
 --features MS \
+--ftr_num 2 \
+--d_out 1 \
 --target price \
 --freq "15t" \
---seq_len 60 \
---label_len 36 \
+--seq_len 48 \
 --pred_len 12 \
---embed t2v \
 --batch_size 12 \
+--embed t2v \
+--inverse \
 --predict
