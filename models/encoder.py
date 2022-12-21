@@ -30,16 +30,16 @@ class EncoderLayer(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, attn_layers, norm_layer=None):
+    def __init__(self, enc_layers, norm_layer=None):
         super(Encoder, self).__init__()
-        self.attn_layers = nn.ModuleList(attn_layers)
+        self.enc_layers = nn.ModuleList(enc_layers)
         self.norm = norm_layer
 
     def forward(self, x, attn_mask=None):
         # x [B, L, D]
         attns = []
-        for attn_layer in self.attn_layers:
-            x, attn = attn_layer(x, attn_mask=attn_mask)
+        for enc_layer in self.enc_layers:
+            x, attn = enc_layer(x, attn_mask=attn_mask)
             attns.append(attn)
         if self.norm is not None:
             x = self.norm(x)

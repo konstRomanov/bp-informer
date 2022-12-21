@@ -16,11 +16,11 @@ class PositionalEmbedding(nn.Module):
         return self.pe(torch.arange(x.size(1)).to('cuda'))[None, :, :].expand(x.size(0), x.size(1), self.d_model)
 
 
-class TokenEmbedding(nn.Module):
-    def __init__(self, d_in, d_model):
-        super(TokenEmbedding, self).__init__()
+class ValueEmbedding(nn.Module):
+    def __init__(self, ftr_num, d_model):
+        super(ValueEmbedding, self).__init__()
         padding = 1 if torch.__version__ >= '1.5.0' else 2
-        self.tokenConv = nn.Conv1d(in_channels=d_in, out_channels=d_model,
+        self.tokenConv = nn.Conv1d(in_channels=ftr_num, out_channels=d_model,
                                    kernel_size=3, padding=padding, padding_mode='circular')
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
@@ -81,20 +81,19 @@ class TemporalEmbedding(nn.Module):
 
 
 class Time2Vec(nn.Module):
-    def __init__(self, features, d_model, d_embed=42):
+    def __init__(self, features, d_model):
         super(Time2Vec, self).__init__()
-        self.l1 = CosActivation(features, d_embed)
-        self.fc1 = nn.Linear(d_embed, d_model)
+        self.l1 = CosActivation(features, d_model)
 
     def forward(self, x):
-        return self.fc1(self.l1(x))
+        return self.l1(x)
 
 
 class DataEmbedding(nn.Module):
-    def __init__(self, d_in, d_model, embed_type='fixed', freq='h', dropout=0.1):
+    def __init__(self, ftr_num, d_model, embed_type='fixed', freq='h', dropout=0.1):
         super(DataEmbedding, self).__init__()
 
-        self.value_embedding = TokenEmbedding(d_in=d_in, d_model=d_model)
+        self.value_embedding = ValueEmbedding(ftr_num=ftr_num, d_model=d_model)
         self.position_embedding = PositionalEmbedding(d_model=d_model)
         if embed_type == 't2v':
             self.temporal_embedding = Time2Vec(5, d_model)
@@ -105,5 +104,4 @@ class DataEmbedding(nn.Module):
 
     def forward(self, x, x_mark):
         x = self.value_embedding(x) + self.position_embedding(x) + self.temporal_embedding(x_mark)
-
         return self.dropout(x)

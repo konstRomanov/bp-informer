@@ -41,7 +41,7 @@ class ExpInformer(ExpBasic):
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
         return model
 
-    def _get_data(self, flag):
+    def _get_data(self, flag, name=None):
         args = self.args
 
         if flag == 'test':
@@ -61,7 +61,7 @@ class ExpInformer(ExpBasic):
             freq = args.freq
         data_set = DatasetAuto(
             root_path=args.root_path,
-            data_path=args.data_path,
+            data_path=name if name else args.data_path,
             flag=flag,
             seq_len=args.seq_len,
             pred_len=args.pred_len,
@@ -71,7 +71,6 @@ class ExpInformer(ExpBasic):
             embed=args.embed,
             freq=freq,
         )
-        print(flag, len(data_set))
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,
@@ -92,9 +91,12 @@ class ExpInformer(ExpBasic):
     def vali(self, vali_data, vali_loader, criterion):
         self.model.eval()
         total_loss = []
+        # print(len(vali_data))
         for i, (batch, batch_time) in enumerate(vali_loader):
-            pred, true = self._process_one_batch(vali_data, batch, batch_time)
+            # print("hello")
+            pred, true, _ = self._process_one_batch(vali_data, batch, batch_time)
             loss = criterion(pred.detach().cpu(), true.detach().cpu())
+            # print(loss)
             total_loss.append(loss)
         total_loss = np.average(total_loss)
         self.model.train()
@@ -103,7 +105,7 @@ class ExpInformer(ExpBasic):
     def train(self):
         train_data, train_loader = self._get_data(flag='train')
         vali_data, vali_loader = self._get_data(flag='val')
-        test_data, test_loader = self._get_data(flag='test')
+        # print(len(vali_data))
 
         time_now = time.time()
 
@@ -120,11 +122,11 @@ class ExpInformer(ExpBasic):
             self.model.train()
             epoch_time = time.time()
             for i, (batch, batch_time) in enumerate(train_loader):
-                # print(f"TEST - Iteration data {i}; {batch_x}; {batch_y}; {batch_x_mark}; {batch_y_mark}")
                 iter_count += 1
 
                 model_optim.zero_grad()
-                pred, true = self._process_one_batch(train_data, batch, batch_time)
+                pred, true, attn = self._process_one_batch(train_data, batch, batch_time)
+
                 loss = criterion(pred, true)
                 train_loss.append(loss.item())
 
@@ -140,12 +142,15 @@ class ExpInformer(ExpBasic):
                 model_optim.step()
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
+
             train_loss = np.average(train_loss)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
-            test_loss = self.vali(test_data, test_loader, criterion)
+            # print(vali_loss)
+            # exit()
 
-            print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}"
-                  .format(epoch + 1, train_steps, train_loss, vali_loss, test_loss))
+            print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f}"
+                  .format(epoch + 1, train_steps, train_loss, vali_loss))
+
             early_stopping(vali_loss, self.model)
             if early_stopping.early_stop:
                 print("Early stopping")
@@ -155,48 +160,45 @@ class ExpInformer(ExpBasic):
 
         self.model.load_state_dict(early_stopping.best_model)
         self.best_model = early_stopping.best_model
+        self.val_loss_min = early_stopping.val_loss_min
 
-        return self.best_model
+        return self.best_model, self.val_loss_min
 
     def test(self):
         test_data, test_loader = self._get_data(flag='test')
 
+        self.model.load_state_dict(self.best_model)
         self.model.eval()
 
         preds = []
         trues = []
 
         for i, (batch, batch_time) in enumerate(test_loader):
-            pred, true = self._process_one_batch(test_data, batch, batch_time)
+            pred, true, attn = self._process_one_batch(test_data, batch, batch_time)
             preds.append(pred.detach().cpu().numpy())
             trues.append(true.detach().cpu().numpy())
 
         preds = np.array(preds)
         trues = np.array(trues)
-        print('test shape:', preds.shape, trues.shape)
         preds = preds.reshape([-1, preds.shape[-2], preds.shape[-1]])
         trues = trues.reshape([-1, trues.shape[-2], trues.shape[-1]])
-        print('test shape:', preds.shape, trues.shape)
 
         mae, mse, rmse, mape, mspe = metric(preds, trues)
-        print(f'mse:{mse}, mae:{mae}')
 
-        return mse, mae, rmse, mape, mspe
+        torch.cuda.empty_cache()
 
-    def predict(self, model=None):
+        return mse, mae
+
+    def predict(self):
         pred_data, pred_loader = self._get_data(flag='pred')
 
-        if model:
-            self.model.load_state_dict(model)
-        else:
-            self.model.load_state_dict(self.best_model)
-
+        self.model.load_state_dict(self.best_model)
         self.model.eval()
 
         preds = []
 
         for i, (batch, batch_time) in enumerate(pred_loader):
-            pred, _ = self._process_one_batch(pred_data, batch, batch_time)
+            pred, _, _ = self._process_one_batch(pred_data, batch, batch_time)
             preds.append(pred.detach().cpu().numpy())
 
         preds = np.array(preds)
@@ -205,7 +207,8 @@ class ExpInformer(ExpBasic):
         res = pd.DataFrame()
         res['date'] = pred_data.pred_stamp.values
         res['price'] = preds[0, :, :].flatten()
-        print(res)
+
+        torch.cuda.empty_cache()
 
         return res
 
@@ -217,14 +220,17 @@ class ExpInformer(ExpBasic):
         enc_inp = mask([batch.shape[0], self.args.pred_len, batch.shape[-1]]).float().to(self.device)
         enc_inp = torch.cat([batch[:, :self.args.seq_len, :], enc_inp], dim=1).float().to(self.device)
 
+        attn = None
         # encoder
         if self.args.output_attention:
-            outputs = self.model(enc_inp, batch_time)[0]
+            outputs, attn = self.model(enc_inp, batch_time)
         else:
             outputs = self.model(enc_inp, batch_time)
 
         if self.args.inverse:
             outputs = dataset_object.inverse_transform(outputs)
+
         f_dim = -1 if self.args.features == 'MS' else 0
         batch_y = batch[:, -self.args.pred_len:, f_dim:].to(self.device)
-        return outputs, batch_y
+
+        return outputs, batch_y, attn

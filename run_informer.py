@@ -2,7 +2,6 @@ import os
 import sys
 from contextlib import contextmanager
 
-import numpy as np
 import torch
 
 from exp.exp_informer import ExpInformer
@@ -20,7 +19,7 @@ def suppress_stdout():
             sys.stdout = old_stdout
 
 
-def run_informer(args, supress_output=False, model=None):
+def train_informer(args, supress_output=False):
     args = DotDict(args)
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
 
@@ -32,20 +31,14 @@ def run_informer(args, supress_output=False, model=None):
 
     if supress_output:
         with suppress_stdout():
-            return __run(args)
+            return __train(args)
 
-    return __run(args, model)
+    return __train(args)
 
 
-def __run(args, model=None):
-    Exp = ExpInformer
-    res = []
-
-    if model:
-        return None, model, Exp(args).predict(model)
-
-    best_model = None
-    preds = None
+def __train(args, supress_output=False):
+    best_exp = None
+    val_loss_min = None
 
     for ii in range(args.itr):
         # setting record of experiments
@@ -61,65 +54,54 @@ def __run(args, model=None):
                                                                             args.embed,
                                                                             ii)
 
-        exp = Exp(args)  # set experiments
+        exp = ExpInformer(args)  # set experiments
         print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
-        best_model = exp.train()
-
-        print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-        res.append([*exp.test()])
-
-        if args.predict:
-            print('>>>>>>>predicting : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-            preds = exp.predict()
+        model, val_loss = exp.train()
+        if not val_loss_min or val_loss < val_loss_min:
+            val_loss_min = val_loss
+            best_exp = exp
 
         torch.cuda.empty_cache()
 
-    return np.average(np.transpose(res), axis=1), best_model, preds
+    return best_exp
 
 
 if __name__ == '__main__':
-    default_args = {
-        'model': 'informer',
+    default_args = {'model': 'informer',
+                    'data': 'data-fine-tuning',
+                    'root_path': './data/stock',
+                    'data_path': 'AAPL.csv',
+                    'features': 'MS',
+                    'ftr_num': 5,
+                    'd_out': 1,
+                    'target': 'price',
+                    'freq': '15t',
+                    'seq_len': 27,
+                    'pred_len': 108,
+                    'itr': 10,
+                    'train_epochs': 10,
+                    'batch_size': 6,
+                    'patience': 5,
+                    'learning_rate': 0.0001,
+                    'loss': 'mse',
+                    'lradj': 'type1',
+                    'inverse': False,
+                    'd_model': 512,
+                    'n_heads': 10,
+                    'e_layers': 6,
+                    'd_ff': 2048,
+                    'embed': 't2v',
+                    'activation': 'gelu',
+                    'padding': 0,
+                    'dropout': 0.05,
+                    'output_attention': False,
+                    'predict': False,
+                    'num_workers': 0,
+                    'use_gpu': True,
+                    'gpu': 0,
+                    'use_multi_gpu': False,
+                    'devices': '0'}
 
-        'data': 'aapl',
-        'root_path': './data/stock',
-        'data_path': 'aapl.csv',
-        'features': 'MS',
-        'ftr_num': 8,
-        'd_out': 1,
-        'target': 'price',
-        'freq': '15t',
-
-        'seq_len': 48,
-        'pred_len': 24,
-
-        'itr': 5,
-        'train_epochs': 8,
-        'batch_size': 58,
-        'patience': 5,
-        'learning_rate': 0.0001,
-        'loss': 'mse',
-        'lradj': 'type2',
-        'inverse': True,
-
-        'd_model': 512,
-        'n_heads': 16,
-        'e_layers': 16,
-        'd_ff': 2048,
-
-        'embed': 't2v',
-        'activation': 'relu',
-        'padding': 0,
-        'dropout': 0.05,
-
-        'output_attention': False,
-        'predict': False,
-
-        'num_workers': 0,
-        'use_gpu': True,
-        'gpu': 0,
-        'use_multi_gpu': False,
-        'devices': '0'
-    }
-
-    print(run_informer(default_args)[0])
+    exp = train_informer(default_args)
+    print(exp.val_loss_min)
+    print(exp.test())

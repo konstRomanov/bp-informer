@@ -21,7 +21,7 @@ class Informer(nn.Module):
         self.encoder = Encoder(
             [
                 EncoderLayer(
-                    AttentionLayer(FullAttention(True, attention_dropout=dropout, output_attention=output_attention),
+                    AttentionLayer(FullAttention(False, attention_dropout=dropout, output_attention=output_attention),
                                    d_model, n_heads),
                     d_model,
                     d_ff,

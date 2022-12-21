@@ -108,6 +108,10 @@ class DatasetAuto(Dataset):
         return seq, seq_stamp
 
     def __len__(self):
+        # if self.model_phase == VAL_PHASE:
+            # print('val---')
+            # print(len(self.data), '-', len(self.data) - self.seq_len - self.pred_len + 1)
+            # print('val---')
         return len(self.data) - self.seq_len - self.pred_len + 1 \
             if self.model_phase != PRED_PHASE \
             else len(self.data) - self.seq_len + 1
