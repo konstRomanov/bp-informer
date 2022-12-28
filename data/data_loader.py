@@ -82,7 +82,7 @@ class DatasetAuto(Dataset):
         df_stamp = df[['date']][border_l:border_r]
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
         if self.model_phase == PRED_PHASE:
-            self.pred_stamp = market_range(df_stamp.date.values[-1], periods=self.pred_len + 1, freq=self.freq)
+            self.pred_stamp = market_range(df_stamp.date.values[-1], periods=self.pred_len + 1)
             tmp = df_stamp
             df_stamp = pd.DataFrame(columns=['date'])
             df_stamp.date = list(tmp.date.values) + list(self.pred_stamp)
@@ -108,10 +108,6 @@ class DatasetAuto(Dataset):
         return seq, seq_stamp
 
     def __len__(self):
-        # if self.model_phase == VAL_PHASE:
-            # print('val---')
-            # print(len(self.data), '-', len(self.data) - self.seq_len - self.pred_len + 1)
-            # print('val---')
         return len(self.data) - self.seq_len - self.pred_len + 1 \
             if self.model_phase != PRED_PHASE \
             else len(self.data) - self.seq_len + 1
@@ -120,7 +116,7 @@ class DatasetAuto(Dataset):
         return self.scaler.inverse_transform(data)
 
 
-def market_range(start, periods, freq):
+def market_range(start, periods):
     nyse = mcal.get_calendar('NYSE')
     nyse_schedule = nyse.schedule(start_date=start, end_date=start+np.timedelta64(periods//PRICES_PER_DAY+2, 'D'))
     return mcal.date_range(nyse_schedule, frequency="15min")[1:periods]

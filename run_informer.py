@@ -67,40 +67,49 @@ def __train(args, supress_output=False):
 
 
 if __name__ == '__main__':
-    default_args = {'model': 'informer',
-                    'data': 'data-fine-tuning',
-                    'root_path': './data/stock',
-                    'data_path': 'AAPL.csv',
-                    'features': 'MS',
-                    'ftr_num': 5,
-                    'd_out': 1,
-                    'target': 'price',
-                    'freq': '15t',
-                    'seq_len': 27,
-                    'pred_len': 108,
-                    'itr': 10,
-                    'train_epochs': 10,
-                    'batch_size': 6,
-                    'patience': 5,
-                    'learning_rate': 0.0001,
-                    'loss': 'mse',
-                    'lradj': 'type1',
-                    'inverse': False,
-                    'd_model': 512,
-                    'n_heads': 10,
-                    'e_layers': 6,
-                    'd_ff': 2048,
-                    'embed': 't2v',
-                    'activation': 'gelu',
-                    'padding': 0,
-                    'dropout': 0.05,
-                    'output_attention': False,
-                    'predict': False,
-                    'num_workers': 0,
-                    'use_gpu': True,
-                    'gpu': 0,
-                    'use_multi_gpu': False,
-                    'devices': '0'}
+    default_args = {
+        'model': 'informer',
+
+        'data': 'data-fine-tuning',
+        'root_path': './data/stock',
+        'data_path': 'AAPL.csv',
+        'features': 'MS',
+        'ftr_num': 22,
+        'd_out': 1,
+        'target': 'price',
+        'freq': '15t',
+
+        'seq_len': 30,
+        'pred_len': 15,
+
+        'itr': 10,
+        'train_epochs': 10,
+        'batch_size': 6,
+        'patience': 5,
+        'learning_rate': 0.0001,
+        'loss': 'mse',
+        'lradj': 'type1',
+        'inverse': False,
+
+        'd_model': 512,
+        'n_heads': 10,
+        'e_layers': 6,
+        'd_ff': 2048,
+
+        'embed': 't2v',
+        'activation': 'gelu',
+        'padding': 0,
+        'dropout': 0.05,
+
+        'output_attention': False,
+        'predict': False,
+
+        'num_workers': 0,
+        'use_gpu': True,
+        'gpu': 0,
+        'use_multi_gpu': False,
+        'devices': '0'
+    }
 
     exp = train_informer(default_args)
     print(exp.val_loss_min)
